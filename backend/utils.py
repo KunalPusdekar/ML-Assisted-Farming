@@ -1,9 +1,69 @@
 import os
 import json
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
+import pickle
+import threading
 import requests
 
 NASA_POWER_BASE = os.getenv("NASA_POWER_BASE_URL", "https://power.larc.nasa.gov/api/temporal/daily/point")
+
+_fertilizer_model_lock = threading.Lock()
+_fertilizer_model: Optional[Any] = None
+
+def load_fertilizer_model() -> Any:
+    global _fertilizer_model
+    if _fertilizer_model is not None:
+        return _fertilizer_model
+    with _fertilizer_model_lock:
+        if _fertilizer_model is not None:
+            return _fertilizer_model
+        # Model path: project_root/models/FertiRecom.pkl
+        base_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), os.pardir))
+        model_path = os.path.join(base_dir, "models", "FertiRecom.pkl")
+        if not os.path.exists(model_path):
+            raise FileNotFoundError(f"Fertilizer model not found at {model_path}")
+        with open(model_path, "rb") as f:
+            _fertilizer_model = pickle.load(f)
+        return _fertilizer_model
+
+def get_fertilizer_recommendation(features: Dict[str, float]) -> Dict[str, Any]:
+    """Run the fertilizer recommendation model.
+
+    Accepts feature keys such as nitrogen, phosphorus, potassium, ph, etc.
+    The model commonly accepts N,P,K (and possibly pH). We attempt to map accordingly.
+    """
+    model = load_fertilizer_model()
+    # Preferred order
+    ordered_keys = ["nitrogen", "phosphorus", "potassium", "ph"]
+    x = [features.get(k) for k in ordered_keys]
+    # Remove trailing None values to fit expected model input size
+    while x and x[-1] is None:
+        x.pop()
+    # Fallback: ensure at least N,P,K are present
+    if len(x) < 3 or any(v is None for v in x[:3]):
+        raise ValueError("Missing required features: nitrogen, phosphorus, potassium")
+    # Some models expect 3 features; slice to length if needed
+    try:
+        # Try 4, then 3, then 2 if necessary
+        for size in (len(x), 4, 3):
+            try_input = x[:size]
+            # scikit models accept 2D array-like
+            pred = getattr(model, "predict", None)
+            proba = getattr(model, "predict_proba", None)
+            if callable(pred):
+                y = pred([try_input])
+                label = y[0] if isinstance(y, (list, tuple)) else y
+                prob = None
+                if callable(proba):
+                    try:
+                        p = proba([try_input])
+                        prob = float(max(p[0]))
+                    except Exception:
+                        prob = None
+                return {"label": str(label), "confidence": round(prob, 3) if isinstance(prob, float) else None}
+    except Exception as e:
+        raise RuntimeError(f"Fertilizer model inference failed: {e}")
+    raise RuntimeError("Fertilizer model inference failed: incompatible input shape")
 
 
 def simple_crop_recommendation(features: Dict[str, float]) -> List[Dict[str, Any]]:

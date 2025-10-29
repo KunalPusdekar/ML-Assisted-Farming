@@ -1,8 +1,8 @@
 import React, { useEffect, useRef, useState } from 'react'
-import { Box, Button, Grid, Paper, Stack, TextField, Typography, Alert } from '@mui/material'
+import { Box, Button, Grid, Paper, Stack, TextField, Typography, Alert, Slide, Dialog, DialogTitle, DialogContent, DialogActions, Snackbar } from '@mui/material'
 import { useAuth } from '../store/AuthContext'
-import 'leaflet/dist/leaflet.css'
-import 'leaflet-draw/dist/leaflet.draw.css'
+import api from '../services/api'
+import { LineChart, Line, XAxis, YAxis, Tooltip, CartesianGrid, ResponsiveContainer, Legend } from 'recharts'
 
 // NOTE: Requires installing deps in frontend:
 // npm i leaflet leaflet-draw chart.js
@@ -24,6 +24,10 @@ export default function LandSelection() {
   const [moisturePreview, setMoisturePreview] = useState(null)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
+  const [successOpen, setSuccessOpen] = useState(false)
+  const [snackOpen, setSnackOpen] = useState(false)
+  const [savedPlot, setSavedPlot] = useState(null)
+  const [satelliteSeries, setSatelliteSeries] = useState([])
 
   // Nutrients (optional)
   const [nitrogen, setNitrogen] = useState('')
@@ -191,41 +195,28 @@ export default function LandSelection() {
       }
 
       setSaving(true)
-      const apiBase = import.meta.env.VITE_API_BASE || 'http://127.0.0.1:8000'
       if (!token) {
         throw new Error('You must be logged in to save a plot.')
       }
-      const controller = new AbortController()
-      const to = setTimeout(() => controller.abort(), 15000)
-      const res = await fetch(`${apiBase}/plots`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify(payload),
-        signal: controller.signal,
-      })
-      clearTimeout(to)
-      if (!res.ok) {
-        let msg = `HTTP ${res.status}`
-        try {
-          const err = await res.json()
-          msg = err.detail || err.error || msg
-        } catch {}
-        throw new Error(msg)
-      }
-      const data = await res.json()
-      // basic success
+      const res = await api.post('/plots', payload)
+      const data = res.data
+      setSavedPlot(data)
+      // fetch satellite series for charts
+      try {
+        const seriesRes = await api.get(`/plots/${data.id}/satellite-data`)
+        const series = (seriesRes.data || []).map(d => ({
+          date: d.date,
+          ndvi: d.ndvi ?? null,
+          soil_moisture: d.soil_moisture ?? null,
+        }))
+        setSatelliteSeries(series)
+      } catch {}
+      setSnackOpen(true)
+      setSuccessOpen(true)
       setPlotName('')
       setNitrogen(''); setPhosphorus(''); setPotassium(''); setPh(''); setOrganicMatter('')
-      alert(`Plot saved! Area: ${data.area_hectares} ha`)
     } catch (e) {
-      if (e.name === 'AbortError') {
-        setError('Request timed out. Please try again.')
-      } else {
-        setError(e.message || 'Save failed')
-      }
+      setError(e.message || 'Save failed')
     } finally {
       setSaving(false)
     }
@@ -233,10 +224,13 @@ export default function LandSelection() {
 
   return (
     <Stack spacing={3}>
-      <Typography variant="h5">Land Selection</Typography>
+      <Slide in direction="down" timeout={400}>
+        <Typography variant="h5">Land Selection</Typography>
+      </Slide>
       {error && <Alert severity="error">{error}</Alert>}
 
-      <Paper sx={{ p: 2 }}>
+      <Slide in timeout={500}>
+        <Paper sx={{ p: 2, borderRadius: 3, boxShadow: 3 }}>
         <Grid container spacing={2} alignItems="center">
           <Grid item xs={12} md={6}>
             <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2}>
@@ -248,7 +242,7 @@ export default function LandSelection() {
             <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} sx={{ mt: 2 }}>
               <TextField label="pH" value={ph} onChange={(e) => setPh(e.target.value)} type="number" />
               <TextField label="Organic Matter (%)" value={organicMatter} onChange={(e) => setOrganicMatter(e.target.value)} type="number" />
-              <Button variant="contained" onClick={handleSave} disabled={saving}>Save Plot</Button>
+              <Button variant="contained" onClick={handleSave} disabled={saving}>{saving ? 'Saving...' : 'Save Plot'}</Button>
             </Stack>
             <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} sx={{ mt: 2 }}>
               <Button size="small" variant="outlined" onClick={startDrawing}>Start Drawing</Button>
@@ -272,27 +266,78 @@ export default function LandSelection() {
             </Typography>
           </Grid>
         </Grid>
-      </Paper>
+        </Paper>
+      </Slide>
 
-      <Paper sx={{ p: 0, overflow: 'hidden' }}>
-        <Box id="land-map" sx={{ height: 480, width: '100%' }} />
-      </Paper>
+      <Slide in timeout={600}>
+        <Paper sx={{ p: 0, overflow: 'hidden', borderRadius: 3, boxShadow: 4 }}>
+          <Box id="land-map" sx={{ height: 480, width: '100%' }} />
+        </Paper>
+      </Slide>
 
       {(ndviPreview || moisturePreview) && (
-        <Paper sx={{ p: 2 }}>
-          <Typography variant="h6" sx={{ mb: 1 }}>Satellite Data Preview (mock)</Typography>
-          <Grid container spacing={2}>
-            <Grid item xs={12} md={6}>
-              <Typography variant="subtitle2">NDVI (last 10 pts)</Typography>
-              <pre style={{ margin: 0 }}>{JSON.stringify(ndviPreview, null, 2)}</pre>
+        <Slide in timeout={700}>
+          <Paper sx={{ p: 2, borderRadius: 3, boxShadow: 3 }}>
+            <Typography variant="h6" sx={{ mb: 1 }}>Satellite Data Preview (mock)</Typography>
+            <Grid container spacing={2}>
+              <Grid item xs={12} md={6}>
+                <ResponsiveContainer width="100%" height={240}>
+                  <LineChart data={ndviPreview?.dates.map((d, i) => ({ date: d, ndvi: ndviPreview.values[i] })) || []}>
+                    <CartesianGrid strokeDasharray="3 3" />
+                    <XAxis dataKey="date" tick={{ fontSize: 12 }} hide />
+                    <YAxis domain={[0, 1]} tick={{ fontSize: 12 }} />
+                    <Tooltip />
+                    <Legend />
+                    <Line type="monotone" dataKey="ndvi" stroke="#2b6cb0" strokeWidth={2} dot={false} />
+                  </LineChart>
+                </ResponsiveContainer>
+              </Grid>
+              <Grid item xs={12} md={6}>
+                <ResponsiveContainer width="100%" height={240}>
+                  <LineChart data={moisturePreview?.dates.map((d, i) => ({ date: d, moisture: moisturePreview.values[i] })) || []}>
+                    <CartesianGrid strokeDasharray="3 3" />
+                    <XAxis dataKey="date" tick={{ fontSize: 12 }} hide />
+                    <YAxis domain={[0, 100]} tick={{ fontSize: 12 }} />
+                    <Tooltip />
+                    <Legend />
+                    <Line type="monotone" dataKey="moisture" stroke="#2f855a" strokeWidth={2} dot={false} />
+                  </LineChart>
+                </ResponsiveContainer>
+              </Grid>
             </Grid>
-            <Grid item xs={12} md={6}>
-              <Typography variant="subtitle2">Soil Moisture (last 10 pts)</Typography>
-              <pre style={{ margin: 0 }}>{JSON.stringify(moisturePreview, null, 2)}</pre>
-            </Grid>
-          </Grid>
-        </Paper>
+          </Paper>
+        </Slide>
       )}
+
+      <Dialog open={successOpen} onClose={() => setSuccessOpen(false)} fullWidth maxWidth="md">
+        <DialogTitle>Plot saved successfully</DialogTitle>
+        <DialogContent dividers>
+          {savedPlot && (
+            <Stack spacing={2}>
+              <Typography variant="subtitle1">{savedPlot.name}</Typography>
+              <Typography variant="body2">Area: {savedPlot.area_hectares} ha</Typography>
+              <Typography variant="subtitle2">Satellite Data (generated)</Typography>
+              <ResponsiveContainer width="100%" height={260}>
+                <LineChart data={satelliteSeries}>
+                  <CartesianGrid strokeDasharray="3 3" />
+                  <XAxis dataKey="date" tick={{ fontSize: 12 }} hide />
+                  <YAxis yAxisId="left" domain={[0, 1]} tick={{ fontSize: 12 }} />
+                  <YAxis yAxisId="right" orientation="right" domain={[0, 100]} tick={{ fontSize: 12 }} />
+                  <Tooltip />
+                  <Legend />
+                  <Line yAxisId="left" type="monotone" dataKey="ndvi" stroke="#2b6cb0" strokeWidth={2} dot={false} name="NDVI" />
+                  <Line yAxisId="right" type="monotone" dataKey="soil_moisture" stroke="#e53e3e" strokeWidth={2} dot={false} name="Soil Moisture (%)" />
+                </LineChart>
+              </ResponsiveContainer>
+            </Stack>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setSuccessOpen(false)}>Close</Button>
+        </DialogActions>
+      </Dialog>
+
+      <Snackbar open={snackOpen} autoHideDuration={3000} onClose={() => setSnackOpen(false)} message="Plot saved" />
     </Stack>
   )
 }

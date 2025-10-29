@@ -5,8 +5,8 @@ from typing import Dict, Any
 from auth import get_current_user
 from database import get_db
 from models import User, UserHistory
-from schemas import CropInput, CropResponse
-from utils import simple_crop_recommendation
+from schemas import CropInput, CropResponse, FertilizerInput, FertilizerResponse
+from utils import simple_crop_recommendation, get_fertilizer_recommendation
 
 router = APIRouter(tags=["predictions"])
 
@@ -30,6 +30,16 @@ def predict_disease(file: UploadFile = File(...), db: Session = Depends(get_db),
     confidence = 0.85 if label != "Healthy" else 0.92
     result = {"label": label, "confidence": confidence, "treatment": "Apply recommended fungicide and improve airflow." if label != "Healthy" else "No action needed."}
     history = UserHistory(user_id=user.id, type="disease_detection", payload={"file": filename, "output": result})
+    db.add(history)
+    db.commit()
+    return result
+
+
+@router.post("/fertilizer_recommendation", response_model=FertilizerResponse)
+def fertilizer_recommendation(payload: FertilizerInput, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    features = payload.model_dump()
+    result = get_fertilizer_recommendation(features)
+    history = UserHistory(user_id=user.id, type="fertilizer_recommendation", payload={"input": features, "output": result})
     db.add(history)
     db.commit()
     return result

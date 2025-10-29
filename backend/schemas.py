@@ -134,3 +134,15 @@ class SatelliteDataOut(BaseModel):
     soil_moisture: Optional[float] = None
     crop_type: Optional[str] = None
 
+
+# Fertilizer recommendation
+class FertilizerInput(BaseModel):
+    nitrogen: float
+    phosphorus: float
+    potassium: float
+    ph: Optional[float] = None
+
+
+class FertilizerResponse(BaseModel):
+    label: str
+    confidence: Optional[float] = None

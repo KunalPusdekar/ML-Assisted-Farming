@@ -1,27 +1,18 @@
 import React from 'react'
 import ReactDOM from 'react-dom/client'
 import { BrowserRouter } from 'react-router-dom'
-import { CssBaseline, ThemeProvider, createTheme } from '@mui/material'
 import App from './App'
 import { AuthProvider } from './store/AuthContext'
-
-const theme = createTheme({
-  palette: {
-    mode: 'light',
-    primary: { main: '#2f855a' },
-    secondary: { main: '#2b6cb0' },
-  },
-})
+import { AppThemeProvider } from './store/ThemeContext'
 
 ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>
-    <ThemeProvider theme={theme}>
-      <CssBaseline />
+    <AppThemeProvider>
       <BrowserRouter>
         <AuthProvider>
           <App />
         </AuthProvider>
       </BrowserRouter>
-    </ThemeProvider>
+    </AppThemeProvider>
   </React.StrictMode>
 )
