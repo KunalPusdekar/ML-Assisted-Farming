@@ -6,7 +6,7 @@ from auth import get_current_user
 from database import get_db
 from models import User, UserHistory
 from schemas import CropInput, CropResponse, FertilizerInput, FertilizerResponse
-from utils import simple_crop_recommendation, get_fertilizer_recommendation
+from utils import simple_crop_recommendation, get_fertilizer_recommendation, crop_recommendation_ml
 
 router = APIRouter(tags=["predictions"])
 
@@ -14,7 +14,11 @@ router = APIRouter(tags=["predictions"])
 @router.post("/predict_crop", response_model=CropResponse)
 def predict_crop(payload: CropInput, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     features = payload.model_dump()
-    recommendations = simple_crop_recommendation(features)
+    # Try ML model first if available; fallback to heuristic
+    try:
+        recommendations = crop_recommendation_ml(features) or simple_crop_recommendation(features)
+    except Exception:
+        recommendations = simple_crop_recommendation(features)
     history = UserHistory(user_id=user.id, type="crop_recommendation", payload={"input": features, "output": recommendations})
     db.add(history)
     db.commit()

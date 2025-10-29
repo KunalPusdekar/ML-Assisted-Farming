@@ -5,6 +5,7 @@ from dotenv import load_dotenv
 from sqlalchemy.orm import Session
 
 from database import Base, engine, SessionLocal
+from utils import load_fertilizer_model, load_crop_model
 from routes.auth_routes import router as auth_router
 from routes.predict_routes import router as predict_router
 from routes.utility_routes import router as utility_router
@@ -28,6 +29,16 @@ app.add_middleware(
 @app.on_event("startup")
 def on_startup():
     Base.metadata.create_all(bind=engine)
+    # Eagerly load ML models to fail fast if missing/incompatible
+    try:
+        load_fertilizer_model()
+    except Exception:
+        # Defer errors to request time but avoid crashing startup
+        pass
+    try:
+        load_crop_model()
+    except Exception:
+        pass
 
 
 @app.get("/")
