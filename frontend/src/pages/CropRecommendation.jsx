@@ -52,8 +52,14 @@ export default function CropRecommendation() {
             {recs.map((r, idx) => (
               <Paper key={idx} sx={{ p: 2 }}>
                 <Typography variant="subtitle1">{r.crop}</Typography>
-                <LinearProgress variant="determinate" value={Math.round(r.confidence * 100)} sx={{ my: 1 }} />
-                <Typography variant="body2" color="text.secondary">Confidence: {(r.confidence * 100).toFixed(1)}%</Typography>
+                {typeof r.confidence === 'number' ? (
+                  <>
+                    <LinearProgress variant="determinate" value={Math.round(r.confidence * 100)} sx={{ my: 1 }} />
+                    <Typography variant="body2" color="text.secondary">Confidence: {(r.confidence * 100).toFixed(1)}%</Typography>
+                  </>
+                ) : (
+                  <Typography variant="body2" color="text.secondary">Confidence unavailable</Typography>
+                )}
               </Paper>
             ))}
             {!loading && recs.length === 0 && <Typography variant="body2">No recommendations yet. Submit the form.</Typography>}
