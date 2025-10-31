@@ -49,7 +49,10 @@ export default function LandSelection() {
       })
 
       leafletRef.current = L
-      const map = L.map('land-map').setView([40.7128, -74.006], 10)
+      // Default center: Nagpur, Maharashtra; try user's live location if available
+      const defaultCenter = [21.1458, 79.0882]
+      const defaultZoom = 11
+      const map = L.map('land-map').setView(defaultCenter, defaultZoom)
       L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
         attribution: '© OpenStreetMap contributors',
       }).addTo(map)
@@ -76,14 +79,26 @@ export default function LandSelection() {
       })
       map.addControl(drawControl)
 
-      // Prepare a polygon drawer we can control with buttons
+      // Attempt to center to user's live location
+      if (navigator && navigator.geolocation) {
+        navigator.geolocation.getCurrentPosition(
+          (pos) => {
+            const { latitude, longitude } = pos.coords
+            map.setView([latitude, longitude], defaultZoom)
+          },
+          () => {
+            // On error, keep default Nagpur view
+          },
+          { enableHighAccuracy: true, timeout: 5000, maximumAge: 0 }
+        )
+      }
+
+      // Prepare a polygon drawer we can control with buttons (match satelliteFeature behavior)
       polygonDrawerRef.current = new L.Draw.Polygon(map, {
         allowIntersection: false,
         showArea: true,
         shapeOptions: { color: '#2f855a', fillOpacity: 0.3 },
-        guidelineDistance: 10,
         metric: true,
-        repeatMode: false,
       })
 
       map.on('draw:created', (e) => {
@@ -152,24 +167,25 @@ export default function LandSelection() {
   function startDrawing() {
     setError('')
     if (!leafletRef.current || !polygonDrawerRef.current) return
+    // Disable double-click zoom during drawing to prevent accidental finishes
+    if (mapRef.current) {
+      mapRef.current.doubleClickZoom.disable()
+    }
     polygonDrawerRef.current.enable()
   }
 
+  // Finish is handled by double-click like in satelliteFeature; provide a cancel option only
   function finishDrawing() {
     if (!polygonDrawerRef.current) return
-    // complete the current polygon shape (if valid)
-    if (typeof polygonDrawerRef.current.completeShape === 'function') {
-      polygonDrawerRef.current.completeShape()
-    } else {
-      // Fallback: Some versions may not expose completeShape; user can double-click to finish
-      setError('Double-click on the last point to finish the polygon if it does not close automatically.')
-    }
-    polygonDrawerRef.current.disable()
+    setError('Double-click the last point to finish the polygon. Use Clear to reset.')
   }
 
   function cancelDrawing() {
     if (!polygonDrawerRef.current) return
     polygonDrawerRef.current.disable()
+    if (mapRef.current) {
+      mapRef.current.doubleClickZoom.enable()
+    }
   }
 
   async function handleSave() {

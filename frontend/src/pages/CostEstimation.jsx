@@ -2,24 +2,45 @@ import React, { useState } from 'react'
 import { Box, Button, MenuItem, Paper, Stack, TextField, Typography } from '@mui/material'
 import api from '../services/api'
 import AlertBanner from '../components/AlertBanner'
-import { PieChart, Pie, Cell, Tooltip, Legend, ResponsiveContainer } from 'recharts'
-
-const CROPS = ['Rice', 'Wheat', 'Maize', 'Cotton']
-const COLORS = ['#2f855a', '#e53e3e']
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
 
 export default function CostEstimation() {
-  const [crop, setCrop] = useState('Rice')
-  const [area, setArea] = useState('1')
+  const [form, setForm] = useState({
+    state: 'Gujarat',
+    district: 'Amreli',
+    market: 'Damnagar',
+    commodity: 'Cabbage',
+    variety: 'Cabbage',
+    grade: 'FAQ',
+    min_price: 3350,
+    max_price: 4000,
+    day: 27,
+    month: 7,
+    year: 2028,
+  })
+
   const [result, setResult] = useState(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+
+  const handleChange = (e) => {
+    const { name, value } = e.target
+    setForm((prev) => ({ ...prev, [name]: value }))
+  }
 
   const onSubmit = async (e) => {
     e.preventDefault()
     setLoading(true)
     setError('')
     try {
-      const { data } = await api.post('/estimate_cost', { crop, area_hectares: Number(area) })
+      const { data } = await api.post('/estimate_cost', {
+        ...form,
+        min_price: Number(form.min_price),
+        max_price: Number(form.max_price),
+        day: Number(form.day),
+        month: Number(form.month),
+        year: Number(form.year),
+      })
       setResult(data)
     } catch (err) {
       setError(err?.response?.data?.detail || 'Failed to estimate cost')
@@ -28,54 +49,62 @@ export default function CostEstimation() {
     }
   }
 
-  const chartData = result ? [
-    { name: 'Investment', value: result.investment },
-    { name: 'Profit', value: Math.max(result.expected_profit, 0) },
-  ] : []
+  // Generate mock trend data for visualization
+  const chartData = result
+    ? Array.from({ length: 7 }, (_, i) => ({
+        day: `Day ${i + 1}`,
+        modalPrice: Math.round(
+          result.Predicted_modal_Price_in_rupees_per_quintal * (0.9 + Math.random() * 0.2)
+        ),
+      }))
+    : []
 
   return (
     <Box>
-      <Typography variant="h5" mb={3}>Cost Estimation</Typography>
+      <Typography variant="h5" mb={3}>Cost Estimation (Modal Price Prediction)</Typography>
+
       <Stack direction={{ xs: 'column', md: 'row' }} spacing={3}>
+        {/* LEFT PANEL - Form */}
         <Paper sx={{ p: 2, flex: 1 }}>
           <Box component="form" onSubmit={onSubmit}>
             <Stack spacing={2}>
-              <TextField select label="Crop" value={crop} onChange={(e) => setCrop(e.target.value)}>
-                {CROPS.map(c => <MenuItem key={c} value={c}>{c}</MenuItem>)}
-              </TextField>
-              <TextField label="Area (hectares)" type="number" value={area} onChange={(e) => setArea(e.target.value)} required />
+              {Object.entries(form).map(([key, value]) => (
+                <TextField
+                  key={key}
+                  name={key}
+                  label={key.replaceAll('_', ' ')}
+                  value={value}
+                  onChange={handleChange}
+                  required
+                />
+              ))}
               {error && <AlertBanner severity="error">{error}</AlertBanner>}
-              <Button type="submit" variant="contained" disabled={loading}>{loading ? 'Calculating...' : 'Calculate'}</Button>
+              <Button type="submit" variant="contained" disabled={loading}>
+                {loading ? 'Predicting...' : 'Predict Modal Price'}
+              </Button>
             </Stack>
           </Box>
         </Paper>
+
+        {/* RIGHT PANEL - Result + Graph */}
         <Paper sx={{ p: 2, flex: 1 }}>
-          <Typography variant="subtitle1" gutterBottom>Investment vs Profit</Typography>
-          <Box sx={{ width: '100%', height: 300 }}>
-            <ResponsiveContainer>
-              <PieChart>
-                <Pie data={chartData} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={100} label>
-                  {chartData.map((entry, index) => (
-                    <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                  ))}
-                </Pie>
-                <Tooltip />
-                <Legend />
-              </PieChart>
-            </ResponsiveContainer>
-          </Box>
-          {result && (
-            <Stack spacing={0.5} mt={2}>
-              <Typography>Crop: <b>{result.crop}</b></Typography>
-              <Typography>Area: <b>{result.area_hectares} ha</b></Typography>
-              <Typography>Expected Yield: <b>{result.expected_yield_tons} tons</b></Typography>
-              <Typography>Market Price/Ton: <b>${result.market_price_per_ton}</b></Typography>
-              <Typography>Expected Revenue: <b>${result.expected_revenue}</b></Typography>
-              <Typography>Investment: <b>${result.investment}</b></Typography>
-              <Typography>Expected Profit: <b>${result.expected_profit}</b></Typography>
-            </Stack>
+          {result ? (
+            <>
+              <Typography variant="h6" gutterBottom>Prediction Result</Typography>
+              <Stack spacing={1} mb={2}>
+                <Typography>Crop: <b>{result.Crop}</b></Typography>
+                <Typography>State: <b>{result.State}</b></Typography>
+                <Typography>District: <b>{result.District}</b></Typography>
+                <Typography>
+                  Predicted Modal Price in Rupees per Quintal: <b>{result.Predicted_modal_Price_in_rupees_per_quintal}</b>
+                </Typography>
+              </Stack>
+
+              
+            </>
+          ) : (
+            <Typography variant="body2">Submit the form to get modal price prediction.</Typography>
           )}
-          {!result && <Typography variant="body2">Submit the form to see results.</Typography>}
         </Paper>
       </Stack>
     </Box>

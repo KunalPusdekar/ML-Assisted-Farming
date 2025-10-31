@@ -19,6 +19,21 @@ export default function WeatherAlerts() {
 
   const handleChange = (e) => setForm({ ...form, [e.target.name]: e.target.value })
 
+  const useMyLocation = () => {
+    if (!(navigator && navigator.geolocation)) {
+      setError('Geolocation not supported')
+      return
+    }
+    setError('')
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        const { latitude, longitude } = pos.coords
+        setForm((f) => ({ ...f, latitude: latitude.toFixed(5), longitude: longitude.toFixed(5) }))
+      },
+      () => setError('Location permission denied')
+    )
+  }
+
   const onSubmit = async (e) => {
     e.preventDefault()
     setLoading(true)
@@ -44,6 +59,7 @@ export default function WeatherAlerts() {
               <Stack spacing={2}>
                 <TextField label="Latitude" name="latitude" type="number" value={form.latitude} onChange={handleChange} required />
                 <TextField label="Longitude" name="longitude" type="number" value={form.longitude} onChange={handleChange} required />
+                <Button size="small" variant="outlined" onClick={useMyLocation}>Use my location</Button>
                 <TextField label="Start (YYYYMMDD)" name="start" value={form.start} onChange={handleChange} required />
                 <TextField label="End (YYYYMMDD)" name="end" value={form.end} onChange={handleChange} required />
                 {error && <AlertBanner severity="error">{error}</AlertBanner>}

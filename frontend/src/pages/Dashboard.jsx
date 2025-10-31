@@ -53,21 +53,38 @@ export default function Dashboard() {
     loadPlots()
   }, [])
 
-  // Weather widget - use first plot center if available
+  // Weather widget - use first plot center if available, else live location
   useEffect(() => {
-    async function loadWeather() {
-      if (!plots.length) return
+    async function loadWeatherFrom(lat, lng) {
       try {
-        const coords = plots[0].coordinates || []
-        if (!coords.length) return
-        const lat = coords.reduce((a, c) => a + c.lat, 0) / coords.length
-        const lng = coords.reduce((a, c) => a + c.lng, 0) / coords.length
         const today = new Date()
         const start = new Date(today); start.setDate(today.getDate() - 2)
         const fmt = (d) => `${d.getFullYear()}${String(d.getMonth()+1).padStart(2,'0')}${String(d.getDate()).padStart(2,'0')}`
         const { data } = await api.post('/weather_alerts', { latitude: lat, longitude: lng, start: fmt(start), end: fmt(today) })
         setWeather(data)
+        setWeatherErr('')
       } catch (e) { setWeatherErr('Weather unavailable') }
+    }
+
+    async function loadWeather() {
+      if (plots.length) {
+        const coords = plots[0].coordinates || []
+        if (coords.length) {
+          const lat = coords.reduce((a, c) => a + c.lat, 0) / coords.length
+          const lng = coords.reduce((a, c) => a + c.lng, 0) / coords.length
+          return loadWeatherFrom(lat, lng)
+        }
+      }
+      // Fallback to user's live location
+      if (navigator && navigator.geolocation) {
+        navigator.geolocation.getCurrentPosition(
+          (pos) => {
+            const { latitude, longitude } = pos.coords
+            loadWeatherFrom(latitude, longitude)
+          },
+          () => setWeatherErr('Location permission denied')
+        )
+      }
     }
     loadWeather()
   }, [plots])

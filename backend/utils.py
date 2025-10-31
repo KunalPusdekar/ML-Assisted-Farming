@@ -6,6 +6,8 @@ import threading
 import requests
 
 NASA_POWER_BASE = os.getenv("NASA_POWER_BASE_URL", "https://power.larc.nasa.gov/api/temporal/daily/point")
+HF_API_URL = os.getenv("HF_PLANT_MODEL", "")  # e.g., https://api-inference.huggingface.co/models/some-user/plant-disease-model
+HF_TOKEN = os.getenv("HF_TOKEN", "")
 
 _fertilizer_model_lock = threading.Lock()
 _fertilizer_model: Optional[Any] = None
@@ -269,3 +271,42 @@ def derive_weather_alerts(raw: Dict[str, Any]) -> List[Dict[str, str]]:
     if not alerts:
         alerts.append({"type": "Normal", "message": "No significant alerts.", "severity": "low"})
     return alerts
+
+
+def predict_leaf_disease_hf(image_bytes: bytes) -> Optional[Dict[str, Any]]:
+    """Call Hugging Face Inference API for plant disease classification if configured.
+
+    Returns a dict with keys: label (str), confidence (float), treatment (str | None)
+    or None if not configured or on error.
+    """
+    if not HF_API_URL:
+        return None
+    headers = {"Accept": "application/json"}
+    if HF_TOKEN:
+        headers["Authorization"] = f"Bearer {HF_TOKEN}"
+    try:
+        resp = requests.post(HF_API_URL, headers=headers, data=image_bytes, timeout=30)
+        resp.raise_for_status()
+        data = resp.json()
+        # Expected formats:
+        # - List of {"label": str, "score": float}
+        # - Or {"error": "..."} for cold starts; handle gracefully
+        if isinstance(data, dict) and "error" in data:
+            return None
+        if isinstance(data, list) and data:
+            top = max(data, key=lambda x: x.get("score", 0.0))
+            label = str(top.get("label", "Unknown")).strip()
+            conf = float(top.get("score", 0.0))
+            treatment = None
+            # Simple suggestions by keyword; extendable later
+            low = label.lower()
+            if any(k in low for k in ["blight", "spot", "mildew", "rust"]):
+                treatment = "Apply appropriate fungicide; remove infected leaves; improve airflow."
+            elif any(k in low for k in ["mosaic", "virus"]):
+                treatment = "Remove infected plants; control vectors; sanitize tools."
+            elif any(k in low for k in ["healthy", "normal"]):
+                treatment = "No action needed."
+            return {"label": label, "confidence": round(conf, 3), "treatment": treatment}
+    except Exception:
+        return None
+    return None

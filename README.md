@@ -227,3 +227,18 @@ Database note (SQLite):
 ## License
 
 This project is provided as-is for demonstration and production adaptation.
+
+
+
+<!-- # 1. Backend Setup
+cd backend
+python -m venv .venv
+.venv\Scripts\activate
+pip install -r requirements.txt
+uvicorn main:app --reload
+
+# 2. Frontend Setup
+cd ../frontend
+npm install
+npm install leaflet leaflet-draw chart.js
+npm run dev -->
